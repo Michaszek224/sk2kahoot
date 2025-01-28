@@ -27,7 +27,7 @@ struct Quiz {
     std::vector<Question> questions;
     std::map<int, std::string> participants;  // socket -> name
     std::map<int, int> scores;  // socket -> score
-    size_t currentQuestion;  // Changed from int to size_t
+    int currentQuestion;
     bool isActive;
     int creatorSocket;
     std::map<int, int> answers;  // socket -> answer
@@ -91,7 +91,7 @@ private:
                 newQuiz.code = code;
                 newQuiz.isActive = false;
                 newQuiz.creatorSocket = clientSocket;
-                newQuiz.currentQuestion = static_cast<size_t>(-1);  // Update initialization
+                newQuiz.currentQuestion = -1;
                 activeQuizzes[code] = newQuiz;
                 clientQuizCodes[clientSocket] = code;
                 
@@ -198,7 +198,7 @@ private:
                 if (!code.empty() && activeQuizzes.find(code) != activeQuizzes.end() && 
                     activeQuizzes[code].creatorSocket == clientSocket) {
                     activeQuizzes[code].isActive = true;
-                    activeQuizzes[code].currentQuestion = 0;  // Already correct as 0 is valid for size_t
+                    activeQuizzes[code].currentQuestion = 0;
                     notifyAllParticipants(code, "Quiz has started!\n");
                     broadcastQuestion(code);
                     startQuestionTimer(code);
@@ -224,32 +224,32 @@ private:
     }
 private:
     void broadcastQuestion(const std::string& quizCode) {
-        auto& quiz = activeQuizzes[quizCode];
-        if (quiz.currentQuestion >= quiz.questions.size()) return;
+    auto& quiz = activeQuizzes[quizCode];
+    if (quiz.currentQuestion >= static_cast<int>(quiz.questions.size())) return;
 
-        auto& question = quiz.questions[quiz.currentQuestion];
-        std::string message = "QUESTION:" + question.content;
-        for (const auto& answer : question.answers) {
-            message += ":" + answer;
-        }
-        message += ":" + std::to_string(question.timeLimit);
-
-        for (const auto& participant : quiz.participants) {
-            send(participant.first, message.c_str(), message.length(), 0);
-            send(participant.first, "\n", 1, 0);
-        }
+    auto& question = quiz.questions[quiz.currentQuestion];
+    std::string message = "QUESTION:" + question.content;
+    for (const auto& answer : question.answers) {
+        message += ":" + answer;
     }
+    message += ":" + std::to_string(question.timeLimit);
+
+    for (const auto& participant : quiz.participants) {
+        send(participant.first, message.c_str(), message.length(), 0);
+        send(participant.first, "\n", 1, 0);
+    }
+}
 private:
     void startQuestionTimer(const std::string& quizCode) {
         std::thread([this, quizCode]() {
             auto& quiz = activeQuizzes[quizCode];
-            if (quiz.currentQuestion >= quiz.questions.size()) return;
+            if (quiz.currentQuestion >= static_cast<int>(quiz.questions.size())) return;
             
             int timeLimit = quiz.questions[quiz.currentQuestion].timeLimit;
             std::this_thread::sleep_for(std::chrono::seconds(timeLimit));
             
-            if (quiz.isActive && quiz.currentQuestion < quiz.questions.size()) {
-                printf("Time's up for question %zu in quiz %s\n", quiz.currentQuestion, quizCode.c_str());
+            if (quiz.isActive && quiz.currentQuestion < static_cast<int>(quiz.questions.size())) {
+                printf("Time's up for question %d in quiz %s\n", quiz.currentQuestion, quizCode.c_str());
                 checkAnswers(quizCode, 1);
             }
         }).detach();
@@ -260,28 +260,6 @@ private:
         std::string message = "PLAYER_ANSWER:" + playerName + ":" + std::to_string(answer) + "\n";
         send(quiz.creatorSocket, message.c_str(), message.length(), 0);
     }
-private:
-    void disconnectAllPlayers(const std::string& quizCode) {
-        auto& quiz = activeQuizzes[quizCode];
-        
-        // Store sockets to close
-        std::vector<int> socketsToClose;
-        for(const auto& participant : quiz.participants) {
-            socketsToClose.push_back(participant.first);
-        }
-        
-        // Close all connections
-        for(int sock : socketsToClose) {
-            close(sock);
-            clientQuizCodes.erase(sock);
-        }
-        
-        // Clear quiz data
-        quiz.participants.clear();
-        quiz.scores.clear();
-        quiz.answers.clear();
-    }
-
 public:
     KahootServer(int port) {
         serverSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -337,7 +315,7 @@ public:
 
     void checkAnswers(const std::string& quizCode, int force = 0) {
         auto& quiz = activeQuizzes[quizCode];
-        if (!quiz.isActive || quiz.currentQuestion >= quiz.questions.size()) return;
+        if (!quiz.isActive || quiz.currentQuestion >= static_cast<int>(quiz.questions.size())) return;
 
         auto& question = quiz.questions[quiz.currentQuestion];
         
@@ -353,7 +331,7 @@ public:
         int totalPlayers = quiz.participants.size();
         int answeredPlayers = quiz.answers.size();
 
-        printf("Checking answers for quiz %s, question %zu\n", quizCode.c_str(), quiz.currentQuestion);
+        printf("Checking answers for quiz %s, question %d\n", quizCode.c_str(), quiz.currentQuestion);
         printf("Total players: %d, Answered players: %d\n", totalPlayers, answeredPlayers);
 
         // Ensure at least 2/3 of participants have answered
@@ -385,12 +363,11 @@ public:
             quiz.answers.clear();
             quiz.currentQuestion++;
 
-            if (quiz.currentQuestion < quiz.questions.size()) {
+            if (quiz.currentQuestion < static_cast<int>(quiz.questions.size())) {
                 broadcastQuestion(quizCode);
             } else {
                 notifyAllParticipants(quizCode, "Quiz has ended!");
                 quiz.isActive = false;
-                disconnectAllPlayers(quizCode);
             }
         } else {
             printf("Waiting for more answers...\n");
