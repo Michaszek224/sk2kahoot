@@ -260,6 +260,28 @@ private:
         std::string message = "PLAYER_ANSWER:" + playerName + ":" + std::to_string(answer) + "\n";
         send(quiz.creatorSocket, message.c_str(), message.length(), 0);
     }
+private:
+    void disconnectAllPlayers(const std::string& quizCode) {
+        auto& quiz = activeQuizzes[quizCode];
+        
+        // Store sockets to close
+        std::vector<int> socketsToClose;
+        for(const auto& participant : quiz.participants) {
+            socketsToClose.push_back(participant.first);
+        }
+        
+        // Close all connections
+        for(int sock : socketsToClose) {
+            close(sock);
+            clientQuizCodes.erase(sock);
+        }
+        
+        // Clear quiz data
+        quiz.participants.clear();
+        quiz.scores.clear();
+        quiz.answers.clear();
+    }
+
 public:
     KahootServer(int port) {
         serverSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -368,6 +390,7 @@ public:
             } else {
                 notifyAllParticipants(quizCode, "Quiz has ended!");
                 quiz.isActive = false;
+                disconnectAllPlayers(quizCode);
             }
         } else {
             printf("Waiting for more answers...\n");
