@@ -52,9 +52,13 @@ private:
         for (const auto& participant : quiz.participants) {
             if (participant.first != excludeSocket) {
                 send(participant.first, message.c_str(), message.length(), 0);
+                send(participant.first, "\n", 1, 0);
             }
         }
     }
+
+    private:
+        std::map<int, std::string> clientQuizCodes;  // socket -> quiz code
 
     void handleClient(int clientSocket) {
         while (true) {
@@ -63,11 +67,13 @@ private:
             
             if (bytesRead <= 0) {
                 // Client disconnected
-                for (auto& quiz : activeQuizzes) {
-                    quiz.second.participants.erase(clientSocket);
-                    quiz.second.scores.erase(clientSocket);
-                    quiz.second.answers.erase(clientSocket);
+                std::string quizCode = clientQuizCodes[clientSocket];
+                if (!quizCode.empty() && activeQuizzes.find(quizCode) != activeQuizzes.end()) {
+                    activeQuizzes[quizCode].participants.erase(clientSocket);
+                    activeQuizzes[quizCode].scores.erase(clientSocket);
+                    activeQuizzes[quizCode].answers.erase(clientSocket);
                 }
+                clientQuizCodes.erase(clientSocket);
                 close(clientSocket);
                 return;
             }
@@ -83,6 +89,7 @@ private:
                 newQuiz.creatorSocket = clientSocket;
                 newQuiz.currentQuestion = -1;
                 activeQuizzes[code] = newQuiz;
+                clientQuizCodes[clientSocket] = code;
                 
                 std::string response = "QUIZ_CODE:" + code + "\n";
                 send(clientSocket, response.c_str(), response.length(), 0);
@@ -91,7 +98,7 @@ private:
                 std::string code = message.substr(5, 6);
                 std::string name = message.substr(12);
                 if (name.empty()) {
-                    send(clientSocket, "ERROR:Name cannot be empty\n", 26, 0);
+                    send(clientSocket, "ERROR:Name cannot be empty\n", 27, 0);
                     continue;
                 }
 
@@ -110,6 +117,7 @@ private:
                 
                 quiz.participants[clientSocket] = name;
                 quiz.scores[clientSocket] = 0;
+                clientQuizCodes[clientSocket] = code;
                 
                 std::string response = "JOINED:" + code + "\n";
                 send(clientSocket, response.c_str(), response.length(), 0);
@@ -117,46 +125,49 @@ private:
                 printf("Client with socket %d joined quiz %s\n", clientSocket, code.c_str());
             }
             else if (message.substr(0, 12) == "ADD_QUESTION") {
+                std::string code = clientQuizCodes[clientSocket];
+                if (code.empty() || activeQuizzes.find(code) == activeQuizzes.end()) {
+                    send(clientSocket, "ERROR:Not part of any quiz\n", 27, 0);
+                    continue;
+                }
+
+                if (activeQuizzes[code].creatorSocket != clientSocket) {
+                    send(clientSocket, "ERROR:Only quiz creator can add questions\n", 41, 0);
+                    continue;
+                }
+
                 try {
-                    std::string code = message.substr(13, 6);
-                    if (activeQuizzes.find(code) == activeQuizzes.end()) {
-                        send(clientSocket, "ERROR:Invalid quiz code\n", 24, 0);
-                        continue;
-                    }
-
-                    if (activeQuizzes[code].creatorSocket != clientSocket) {
-                        send(clientSocket, "ERROR:Only quiz creator can add questions\n", 41, 0);
-                        continue;
-                    }
-
-                    size_t pos = message.find(':', 20);
+                    size_t pos = message.find(':', 13);
                     if (pos == std::string::npos) {
                         send(clientSocket, "ERROR:Invalid question format\n", 30, 0);
                         continue;
                     }
-                    std::string content = message.substr(20, pos - 20);
-                    
+                    std::string content = message.substr(13, pos - 13);
+                    printf("Question content: %s\n", content.c_str());
+
                     Question q;
                     q.content = content;
-                    
+
                     for (int i = 0; i < 4; i++) {
                         size_t nextPos = message.find(':', pos + 1);
                         if (nextPos == std::string::npos) {
                             send(clientSocket, "ERROR:Invalid answer format\n", 28, 0);
                             continue;
                         }
+                        printf("Answer %d: %s\n", i, message.substr(pos + 1, nextPos - pos - 1).c_str());
                         q.answers.push_back(message.substr(pos + 1, nextPos - pos - 1));
                         pos = nextPos;
                     }
-                    
+
                     pos = message.find(':', pos + 1);
                     if (pos == std::string::npos) {
                         send(clientSocket, "ERROR:Missing correct answer\n", 29, 0);
                         continue;
                     }
-                    q.correctAnswer = std::stoi(message.substr(pos + 1, 1));
+                    q.correctAnswer = std::stoi(message.substr(pos+1, 1));
+                    printf("Correct answer index: %d\n", q.correctAnswer);
                     if (q.correctAnswer < 0 || q.correctAnswer >= 4) {
-                        send(clientSocket, "ERROR:Invalid correct answer number\n", 35, 0);
+                        send(clientSocket, "ERROR:Invalid correct answer number\n", 38, 0);
                         continue;
                     }
 
@@ -166,11 +177,12 @@ private:
                         continue;
                     }
                     q.timeLimit = std::stoi(message.substr(pos + 1));
+                    printf("Time limit: %d\n", q.timeLimit);
                     if (q.timeLimit <= 0) {
                         send(clientSocket, "ERROR:Time limit must be positive\n", 33, 0);
                         continue;
                     }
-                    
+
                     activeQuizzes[code].questions.push_back(q);
                     send(clientSocket, "QUESTION_ADDED\n", 15, 0);
                 } catch (const std::exception& e) {
@@ -178,8 +190,8 @@ private:
                 }
             }
             else if (message.substr(0, 5) == "START") {
-                std::string code = message.substr(6, 6);
-                if (activeQuizzes.find(code) != activeQuizzes.end() && 
+                std::string code = clientQuizCodes[clientSocket];
+                if (!code.empty() && activeQuizzes.find(code) != activeQuizzes.end() && 
                     activeQuizzes[code].creatorSocket == clientSocket) {
                     activeQuizzes[code].isActive = true;
                     activeQuizzes[code].currentQuestion = 0;
@@ -188,9 +200,13 @@ private:
                 }
             }
             else if (message.substr(0, 6) == "ANSWER") {
-                std::string code = message.substr(7, 6);
-                int answer = std::stoi(message.substr(14));
+                std::string code = clientQuizCodes[clientSocket];
+                if (code.empty()) {
+                    send(clientSocket, "ERROR:Not part of any quiz\n", 27, 0);
+                    continue;
+                }
                 
+                int answer = std::stoi(message.substr(7));
                 if (activeQuizzes.find(code) != activeQuizzes.end() && 
                     activeQuizzes[code].isActive) {
                     activeQuizzes[code].answers[clientSocket] = answer;
@@ -309,13 +325,13 @@ int main() {
     printf("Server started on port 8080\n");
     printf("\n");
     printf("Instructions for quiz creator:\n");
-    printf("CREATE: Create a new quiz\n");
-    printf("ADD_QUESTION:<quiz_code>:<question>:<answer1>:<answer2>:<answer3>:<answer4>:<correct_answer>:<time_limit>\n");
-    printf("START:<quiz_code>: Start the quiz\n");
+    printf("CREATE - Create a new quiz\n");
+    printf("ADD_QUESTION:<question>:<answer1>:<answer2>:<answer3>:<answer4>:<0>:<correct_answer>:<time_limit>\n");
+    printf("START - Start the quiz\n");
     printf("\n");
     printf("Instructions for quiz participants:\n");
-    printf("JOIN:<quiz_code>:<name>: Join a quiz\n");
-    printf("ANSWER:<quiz_code>:<answer>: Answer a question\n");
+    printf("JOIN:<quiz_code>:<name> - Join a quiz\n");
+    printf("ANSWER:<answer_number> - Answer current question\n");
     server.start();
     return 0;
 }
