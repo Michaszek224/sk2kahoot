@@ -290,7 +290,9 @@ public:
         printf("Total players: %d, Answered players: %d\n", totalPlayers, answeredPlayers);
 
         // Ensure at least 2/3 of participants have answered
-        if (answeredPlayers >= (2 * totalPlayers) / 3) {
+        
+        printf(answeredPlayers >= (2 * totalPlayers) / 3 ? "Enough answers\n" : "Not enough answers\n");
+        if (static_cast<float>(answeredPlayers) / totalPlayers >= 2.0f / 3.0f) {
             for (const auto& answer : quiz.answers) {
                 if (answer.second == question.correctAnswer) {
                     quiz.scores[answer.first] += 100;
