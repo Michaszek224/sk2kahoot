@@ -27,7 +27,7 @@ struct Quiz {
     std::vector<Question> questions;
     std::map<int, std::string> participants;  // socket -> name
     std::map<int, int> scores;  // socket -> score
-    int currentQuestion;
+    size_t currentQuestion;  // Changed from int to size_t
     bool isActive;
     int creatorSocket;
     std::map<int, int> answers;  // socket -> answer
@@ -91,7 +91,7 @@ private:
                 newQuiz.code = code;
                 newQuiz.isActive = false;
                 newQuiz.creatorSocket = clientSocket;
-                newQuiz.currentQuestion = -1;
+                newQuiz.currentQuestion = static_cast<size_t>(-1);  // Update initialization
                 activeQuizzes[code] = newQuiz;
                 clientQuizCodes[clientSocket] = code;
                 
@@ -198,7 +198,7 @@ private:
                 if (!code.empty() && activeQuizzes.find(code) != activeQuizzes.end() && 
                     activeQuizzes[code].creatorSocket == clientSocket) {
                     activeQuizzes[code].isActive = true;
-                    activeQuizzes[code].currentQuestion = 0;
+                    activeQuizzes[code].currentQuestion = 0;  // Already correct as 0 is valid for size_t
                     notifyAllParticipants(code, "Quiz has started!\n");
                     broadcastQuestion(code);
                     startQuestionTimer(code);
@@ -249,7 +249,7 @@ private:
             std::this_thread::sleep_for(std::chrono::seconds(timeLimit));
             
             if (quiz.isActive && quiz.currentQuestion < quiz.questions.size()) {
-                printf("Time's up for question %d in quiz %s\n", quiz.currentQuestion, quizCode.c_str());
+                printf("Time's up for question %zu in quiz %s\n", quiz.currentQuestion, quizCode.c_str());
                 checkAnswers(quizCode, 1);
             }
         }).detach();
@@ -331,7 +331,7 @@ public:
         int totalPlayers = quiz.participants.size();
         int answeredPlayers = quiz.answers.size();
 
-        printf("Checking answers for quiz %s, question %d\n", quizCode.c_str(), quiz.currentQuestion);
+        printf("Checking answers for quiz %s, question %zu\n", quizCode.c_str(), quiz.currentQuestion);
         printf("Total players: %d, Answered players: %d\n", totalPlayers, answeredPlayers);
 
         // Ensure at least 2/3 of participants have answered
