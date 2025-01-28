@@ -197,6 +197,7 @@ private:
                     activeQuizzes[code].currentQuestion = 0;
                     notifyAllParticipants(code, "Quiz has started!\n");
                     broadcastQuestion(code);
+                    startQuestionTimer(code);
                 }
             }
             else if (message.substr(0, 6) == "ANSWER") {
@@ -231,6 +232,21 @@ private:
             send(participant.first, message.c_str(), message.length(), 0);
             send(participant.first, "\n", 1, 0);
         }
+    }
+private:
+    void startQuestionTimer(const std::string& quizCode) {
+        std::thread([this, quizCode]() {
+            auto& quiz = activeQuizzes[quizCode];
+            if (quiz.currentQuestion >= quiz.questions.size()) return;
+            
+            int timeLimit = quiz.questions[quiz.currentQuestion].timeLimit;
+            std::this_thread::sleep_for(std::chrono::seconds(timeLimit));
+            
+            if (quiz.isActive && quiz.currentQuestion < quiz.questions.size()) {
+                printf("Time's up for question %d in quiz %s\n", quiz.currentQuestion, quizCode.c_str());
+                checkAnswers(quizCode, 1);
+            }
+        }).detach();
     }
 public:
     KahootServer(int port) {
@@ -278,7 +294,7 @@ public:
         }
     }
 
-    void checkAnswers(const std::string& quizCode) {
+    void checkAnswers(const std::string& quizCode, int force = 0) {
         auto& quiz = activeQuizzes[quizCode];
         if (!quiz.isActive || quiz.currentQuestion >= quiz.questions.size()) return;
 
@@ -300,6 +316,10 @@ public:
         printf("Total players: %d, Answered players: %d\n", totalPlayers, answeredPlayers);
 
         // Ensure at least 2/3 of participants have answered
+        if (force == 1)
+        {
+            answeredPlayers = totalPlayers;
+        }
         
         printf(answeredPlayers >= (2 * totalPlayers) / 3 ? "Enough answers\n" : "Not enough answers\n");
         if (static_cast<float>(answeredPlayers) / totalPlayers >= 2.0f / 3.0f) {
