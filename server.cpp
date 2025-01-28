@@ -229,6 +229,7 @@ private:
 
         for (const auto& participant : quiz.participants) {
             send(participant.first, message.c_str(), message.length(), 0);
+            send(participant.first, "\n", 1, 0);
         }
     }
 public:
@@ -288,6 +289,7 @@ public:
         printf("Checking answers for quiz %s, question %d\n", quizCode.c_str(), quiz.currentQuestion);
         printf("Total players: %d, Answered players: %d\n", totalPlayers, answeredPlayers);
 
+        // Ensure at least 2/3 of participants have answered
         if (answeredPlayers >= (2 * totalPlayers) / 3) {
             for (const auto& answer : quiz.answers) {
                 if (answer.second == question.correctAnswer) {
@@ -295,12 +297,16 @@ public:
                 }
             }
             
+            // Prepare the score update message
+            std::string scoreUpdate = "SCORES:";
             for (const auto& participant : quiz.participants) {
-                std::string scoreUpdate = "SCORES:";
-                for (const auto& score : quiz.scores) {
-                    scoreUpdate += participant.second + ":" + std::to_string(score.second) + ";";
-                }
+                scoreUpdate += participant.second + ":" + std::to_string(quiz.scores[participant.first]) + ";";
+            }
+
+            // Send the score update to all participants
+            for (const auto& participant : quiz.participants) {
                 send(participant.first, scoreUpdate.c_str(), scoreUpdate.length(), 0);
+                send(participant.first, "\n", 1, 0);
             }
 
             quiz.answers.clear();
@@ -312,6 +318,8 @@ public:
                 notifyAllParticipants(quizCode, "Quiz has ended!");
                 quiz.isActive = false;
             }
+        } else {
+            printf("Waiting for more answers...\n");
         }
     }
 
