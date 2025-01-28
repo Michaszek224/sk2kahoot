@@ -10,6 +10,10 @@
 #include <random>
 #include <chrono>
 #include <algorithm>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
 
 struct Question {
     std::string content;
@@ -289,6 +293,8 @@ public:
             std::cerr << "Listen failed" << std::endl;
             return;
         }
+
+        printNetworkInterfaces(port);
     }
 
     void start() {
@@ -370,6 +376,34 @@ public:
 
     ~KahootServer() {
         close(serverSocket);
+    }
+
+    void printNetworkInterfaces(int port) {
+        struct ifaddrs *ifaddr, *ifa;
+        int family;
+
+        if (getifaddrs(&ifaddr) == -1) {
+            perror("getifaddrs");
+            return;
+        }
+
+        printf("\nAvailable network interfaces:\n");
+        for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+            if (ifa->ifa_addr == NULL)
+                continue;
+
+            family = ifa->ifa_addr->sa_family;
+            if (family == AF_INET) { // IPv4
+                char host[NI_MAXHOST];
+                inet_ntop(AF_INET, 
+                         &((struct sockaddr_in *)ifa->ifa_addr)->sin_addr,
+                         host, 
+                         NI_MAXHOST);
+                printf("%s:\t%s:%d\n", ifa->ifa_name, host, port);
+            }
+        }
+        printf("\n");
+        freeifaddrs(ifaddr);
     }
 };
 
