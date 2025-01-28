@@ -272,14 +272,19 @@ public:
 
         sockaddr_in serverAddress;
         serverAddress.sin_family = AF_INET;
-        serverAddress.sin_addr.s_addr = INADDR_ANY;
+        serverAddress.sin_addr.s_addr = INADDR_ANY;  // Accept connections from any address
         serverAddress.sin_port = htons(port);
 
         if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
             std::cerr << "Bind failed" << std::endl;
             return;
         }
-
+        
+        // Print all available network interfaces
+        printf("Server is listening on all network interfaces:\n");
+        printf("localhost:    127.0.0.1:%d\n", port);
+        printf("all interfaces: 0.0.0.0:%d\n", port);
+        
         if (listen(serverSocket, 10) < 0) {
             std::cerr << "Listen failed" << std::endl;
             return;
