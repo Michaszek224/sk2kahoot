@@ -283,6 +283,16 @@ public:
         if (!quiz.isActive || quiz.currentQuestion >= quiz.questions.size()) return;
 
         auto& question = quiz.questions[quiz.currentQuestion];
+        
+        // Remove answers from disconnected players
+        for (auto it = quiz.answers.begin(); it != quiz.answers.end();) {
+            if (quiz.participants.find(it->first) == quiz.participants.end()) {
+                it = quiz.answers.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
         int totalPlayers = quiz.participants.size();
         int answeredPlayers = quiz.answers.size();
 
