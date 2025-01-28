@@ -211,6 +211,8 @@ private:
                 if (activeQuizzes.find(code) != activeQuizzes.end() && 
                     activeQuizzes[code].isActive) {
                     activeQuizzes[code].answers[clientSocket] = answer;
+                    // Add notification for creator
+                    notifyCreator(code, activeQuizzes[code].participants[clientSocket], answer);
                     checkAnswers(code);
                 }
             }
@@ -247,6 +249,12 @@ private:
                 checkAnswers(quizCode, 1);
             }
         }).detach();
+    }
+private:
+    void notifyCreator(const std::string& quizCode, const std::string& playerName, int answer) {
+        auto& quiz = activeQuizzes[quizCode];
+        std::string message = "PLAYER_ANSWER:" + playerName + ":" + std::to_string(answer) + "\n";
+        send(quiz.creatorSocket, message.c_str(), message.length(), 0);
     }
 public:
     KahootServer(int port) {
@@ -360,13 +368,30 @@ public:
     }
 };
 
-int main() {
-    KahootServer server(8080);
-    printf("Server started on port 8080\n");
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        printf("Usage: %s <port>\n", argv[0]);
+        return 1;
+    }
+
+    int port;
+    try {
+        port = std::stoi(argv[1]);
+        if (port < 1024 || port > 65535) {
+            printf("Error: Port number must be between 1024 and 65535\n");
+            return 1;
+        }
+    } catch (const std::exception& e) {
+        printf("Error: Invalid port number\n");
+        return 1;
+    }
+
+    KahootServer server(port);
+    printf("Server started on port %d\n", port);
     printf("\n");
     printf("Instructions for quiz creator:\n");
     printf("CREATE - Create a new quiz\n");
-    printf("ADD_QUESTION:<question>:<answer1>:<answer2>:<answer3>:<answer4>:<0>:<correct_answer>:<time_limit>\n");
+    printf("ADD_QUESTION:<question>:<answer1>:<answer2>:<answer3>:<answer4>:<correct_answer>:<time_limit>\n");
     printf("START - Start the quiz\n");
     printf("\n");
     printf("Instructions for quiz participants:\n");
